@@ -13,7 +13,10 @@ impl Indexer for Btree{
     fn put(&self,key:Vec<u8>,pos:LogRecordPos) -> bool {
         // 拿到写锁
         let mut write_guard = self.tree.write();
+        // insert如果已经有这个key了，就会把老的old_value返回,然后替换掉
+        // 如果原本没有这个key,就直接插入kv，然后返回None
         write_guard.insert(key, pos);
+        // 这里是直接返回true的，后面会根据读到的是旧数据来
         true
     }
 
@@ -25,7 +28,7 @@ impl Indexer for Btree{
 
     fn delete(&self,key:Vec<u8>) -> bool {
         let mut write_guard = self.tree.write();
-        // 查看remove结果情况怎么样?
+        // 查看remove结果情况怎么样
         let remove_res = write_guard.remove(&key);
         remove_res.is_some()
     }
@@ -77,8 +80,14 @@ mod test_btree{
         // get
         let log = btree.get("key1".as_bytes().to_vec());
         assert!(log.is_some());
+        assert_eq!(log.unwrap().file_id,0);
+        assert_eq!(log.unwrap().offset,10);
+
         let log = btree.get("key2".as_bytes().to_vec());
         assert!(log.is_some());
+        assert_eq!(log.unwrap().file_id,0);
+        assert_eq!(log.unwrap().offset,20);
+
         let log = btree.get("key3".as_bytes().to_vec());
         assert!(log.is_none());
     }
@@ -97,13 +106,16 @@ mod test_btree{
         });
         assert_eq!(flag,true);
 
-        // get
-        let log = btree.get("key1".as_bytes().to_vec());
-        assert!(log.is_some());
-        let log = btree.get("key2".as_bytes().to_vec());
-        assert!(log.is_some());
-        let log = btree.get("key3".as_bytes().to_vec());
-        assert!(log.is_none());
+       // get
+       let log = btree.get("key1".as_bytes().to_vec());
+       assert!(log.is_some());
+       assert_eq!(log.unwrap().file_id,0);
+       assert_eq!(log.unwrap().offset,10);
+
+       let log = btree.get("key2".as_bytes().to_vec());
+       assert!(log.is_some());
+       assert_eq!(log.unwrap().file_id,0);
+       assert_eq!(log.unwrap().offset,20);
 
         // delete 
         let flag = btree.delete("key1".as_bytes().to_vec());
