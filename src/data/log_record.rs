@@ -4,10 +4,10 @@
 // 在堆上也可以在栈上也可以在栈上
 // Clone会alloc内存，Copy不会，但是Copy
 // 实现了Clone,所以也会有内存alloc
-#[derive(Clone,Copy,Debug)]
-pub struct LogRecordPos{
+#[derive(Clone, Copy, Debug)]
+pub struct LogRecordPos {
     // 在当前项目包可见即可
-    pub(crate) file_id:u32,
+    pub(crate) file_id: u32,
     // 在当前项目包可见即可
-    pub(crate) offset:u64,
+    pub(crate) offset: u64,
 }
