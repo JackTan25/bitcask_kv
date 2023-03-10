@@ -13,6 +13,16 @@ pub enum Errors {
     FailSyncDataToFile,
     #[error("Fail to new a data file")]
     FailNewDataFile,
+    #[error("Key can't be empty")]
+    KeyEmptyErr,
+    #[error("Fail to Update Memory Indexer")]
+    FailUpdateIndexer,
+    #[error("Key not Found in Index")]
+    KeyNotFoundInIndex,
+    #[error("Key not Found in DataFile")]
+    KeyNotFoundInDataFile,
+    #[error("Key Not Found")]
+    KeyNotFound,
 }
 
 pub type Result<T> = std::result::Result<T, Errors>;
