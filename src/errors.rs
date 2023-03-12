@@ -2,7 +2,7 @@ use thiserror::Error;
 
 #[allow(dead_code)]
 // 这个文件用来自定义我们自己的error
-#[derive(Error, Debug)]
+#[derive(Error, Debug, PartialEq)]
 pub enum Errors {
     // 利用thiserror来实现display
     #[error("Fail to read data from file")]
@@ -23,6 +23,18 @@ pub enum Errors {
     KeyNotFoundInDataFile,
     #[error("Key Not Found")]
     KeyNotFound,
+    #[error("DirPath Is Invalid, can't be empty")]
+    DirPathEmptyError,
+    #[error("FileSize option must greater than 0")]
+    InvalidDataFileSizeOption,
+    #[error("Create DirPath Failed")]
+    DirPathCreateFailed,
+    #[error("Read DirPath Error")]
+    DirPathReadFailed,
+    #[error("DataFile Maybe Corrupted")]
+    DataFileCorrupted,
+    #[error("DataFile Read EOF")]
+    DataFileReadEOF,
 }
 
 pub type Result<T> = std::result::Result<T, Errors>;

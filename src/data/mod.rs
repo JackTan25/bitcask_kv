@@ -1,5 +1,5 @@
-pub(crate) mod log_record;
 pub(crate) mod data_file;
+pub(crate) mod log_record;
 /*
     可见性规则
     1.如果我们的LogRecordPos是pub(crate),那么就说明
