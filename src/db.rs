@@ -176,6 +176,32 @@ impl Engine {
         return Ok(readlog_record.logrecord.value.into());
     }
 
+    pub fn delete(&self,key: Bytes) -> Result<()>{
+        // 1.判断空key
+        if key.is_empty(){
+            return Err(Errors::KeyEmptyErr)
+        }
+        // 2.从内存索引获取
+        let logrecord_pos = self.indexer.get(key.to_vec());
+        if logrecord_pos.is_none(){
+            return Ok(())
+        }
+        let mut log_record = LogRecord{
+            key:key.to_vec(),
+            value:Default::default(),
+            log_type:LogRecordType::DELETED,
+        };
+        match self.append_log(&mut log_record){
+            Ok(_) => {
+                self.indexer.delete(key.to_vec());
+                return Ok(())
+            },
+            Err(e)=>{
+                return  Err(e)
+            }
+        }
+    }
+
     pub fn append_log(&self, log_record: &mut LogRecord) -> Result<LogRecordPos> {
         // 1.编码logRecord
         let enc_log_record = log_record.encode();
