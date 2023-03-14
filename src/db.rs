@@ -176,29 +176,27 @@ impl Engine {
         return Ok(readlog_record.logrecord.value.into());
     }
 
-    pub fn delete(&self,key: Bytes) -> Result<()>{
+    pub fn delete(&self, key: Bytes) -> Result<()> {
         // 1.判断空key
-        if key.is_empty(){
-            return Err(Errors::KeyEmptyErr)
+        if key.is_empty() {
+            return Err(Errors::KeyEmptyErr);
         }
         // 2.从内存索引获取
         let logrecord_pos = self.indexer.get(key.to_vec());
-        if logrecord_pos.is_none(){
-            return Ok(())
+        if logrecord_pos.is_none() {
+            return Ok(());
         }
-        let mut log_record = LogRecord{
-            key:key.to_vec(),
-            value:Default::default(),
-            log_type:LogRecordType::DELETED,
+        let mut log_record = LogRecord {
+            key: key.to_vec(),
+            value: Default::default(),
+            log_type: LogRecordType::DELETED,
         };
-        match self.append_log(&mut log_record){
+        match self.append_log(&mut log_record) {
             Ok(_) => {
                 self.indexer.delete(key.to_vec());
-                return Ok(())
-            },
-            Err(e)=>{
-                return  Err(e)
+                return Ok(());
             }
+            Err(e) => return Err(e),
         }
     }
 
@@ -224,8 +222,7 @@ impl Engine {
             *active_file_write_guard = new_data_file.unwrap();
         }
         // 4.append log
-        active_file_write_guard
-            .write(&enc_log_record, active_file_write_guard.get_wtite_offset())?;
+        active_file_write_guard.write(&enc_log_record)?;
         // 5.根据配置看是否每次都要进行持久化
         if self.options.sync {
             active_file_write_guard.sync()?;

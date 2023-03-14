@@ -1,3 +1,5 @@
+use prost::length_delimiter_len;
+
 // 实现了Copy trait的对象一定实现了Clone
 // 实现Clone的没有实现Copy的只能在堆上
 // 而实现了Copy的必然实现了Clone，既可以
@@ -18,6 +20,16 @@ pub enum LogRecordType {
     DELETED = 2,
 }
 
+impl LogRecordType {
+    pub fn from_byte(recordType: u8) -> LogRecordType {
+        match recordType {
+            1 => LogRecordType::NORMAL,
+            2 => LogRecordType::DELETED,
+            _ => panic!("unknown record type"),
+        }
+    }
+}
+
 // 定义日志存储结构
 pub struct LogRecord {
     pub(crate) key: Vec<u8>,
@@ -31,7 +43,16 @@ pub struct ReadLogRecord {
 }
 
 impl LogRecord {
+    pub fn crc32(&self) -> u32 {
+        todo!()
+    }
+
     pub fn encode(&self) -> Vec<u8> {
         todo!()
+    }
+
+    // 获取logrecord的header长度的理论最大值
+    pub fn max_logrecord_header() -> usize {
+        std::mem::size_of::<u8>() + length_delimiter_len(std::mem::size_of::<u32>()) * 2
     }
 }

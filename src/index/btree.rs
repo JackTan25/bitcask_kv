@@ -45,6 +45,8 @@ impl Btree {
 // 添加test
 #[cfg(test)]
 mod test_btree {
+    use prost::length_delimiter_len;
+
     use super::*;
 
     #[test]

@@ -35,6 +35,8 @@ pub enum Errors {
     DataFileCorrupted,
     #[error("DataFile Read EOF")]
     DataFileReadEOF,
+    #[error("CheckSum Failed, the LogRecord maybe broken")]
+    CheckSumFailed,
 }
 
 pub type Result<T> = std::result::Result<T, Errors>;
