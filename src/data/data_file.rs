@@ -1,3 +1,4 @@
+use std::collections::HashMap;
 use std::fs;
 use std::path::PathBuf;
 
@@ -23,6 +24,11 @@ pub struct DataFile {
 pub const DATA_FILE_NAME_SUFFIX: &str = ".data";
 
 impl DataFile {
+    fn set_write_offset(&self, size: u64) {
+        let mut write_guard = self.write_offset.write();
+        *write_guard += size as u64;
+    }
+
     fn get_file_name(dirpath: PathBuf, file_id: u32) -> PathBuf {
         let file_id_str = std::format!("{:09}", file_id) + DATA_FILE_NAME_SUFFIX;
         dirpath.join(file_id_str)
@@ -108,10 +114,12 @@ impl DataFile {
             return Err(Errors::DirPathReadFailed);
         }
         let mut file_ids: Vec<u32> = Vec::new();
+        let mut file_size: HashMap<u32, u64> = HashMap::new();
         let mut datafiles: Vec<DataFile> = Vec::new();
         for file in dir_files.unwrap() {
             let entry = file.unwrap().file_name();
             let file_name = entry.to_str().unwrap();
+            let metadata = std::fs::metadata(dirpath.join(file_name)).unwrap();
             // 我们只需要拿到数据文件,所以我们需要看后缀名
             if file_name.ends_with(DATA_FILE_NAME_SUFFIX) {
                 let splits: Vec<&str> = file_name.split(".").collect();
@@ -119,7 +127,8 @@ impl DataFile {
                     Ok(file_id) => file_id,
                     Err(_) => return Err(Errors::DataFileCorrupted),
                 };
-                file_ids.push(file_id)
+                file_ids.push(file_id);
+                file_size.insert(file_id, metadata.len() as u64);
             }
         }
         // 对file_id进行排序
@@ -127,7 +136,9 @@ impl DataFile {
         for file_id in file_ids {
             // 这里出现错误我们不用unwarp将其panic掉
             // 而是使用?范围Err
-            datafiles.push(DataFile::new(dirpath.clone(), file_id)?)
+            let datafile = DataFile::new(dirpath.clone(), file_id)?;
+            datafile.set_write_offset(*file_size.get(&file_id).unwrap() as u64);
+            datafiles.push(datafile);
         }
         return Ok(datafiles);
     }
@@ -136,6 +147,8 @@ impl DataFile {
 #[cfg(test)]
 mod data_file_test {
     use std::fs;
+
+    use crate::data::log_record::{LogRecord, LogRecordType::*};
 
     use super::DataFile;
 
@@ -202,5 +215,55 @@ mod data_file_test {
         // sync
         let sync_res = datafile.sync();
         assert!(sync_res.is_ok())
+    }
+
+    #[test]
+    fn test_read_log_record() {
+        let temp_dir = std::env::temp_dir();
+        // 构造一个新的文件
+        let datafile_res = DataFile::new(temp_dir.clone(), 300);
+        assert!(datafile_res.is_ok());
+        let datafile = datafile_res.unwrap();
+        assert_eq!(datafile.get_file_id(), 300);
+        assert_eq!(datafile.get_wtite_offset(), 0);
+        // 写入一个LogRecord
+        let logrecord1 = LogRecord {
+            key: "key1".as_bytes().to_vec(),
+            value: "value1".as_bytes().to_vec(),
+            log_type: NORMAL,
+        };
+        let write_size = datafile.write(&logrecord1.encode()).unwrap();
+        // 读第一个LogRecord
+        let read_logrecord1 = datafile.read_log_record(0).unwrap();
+        let log_record = read_logrecord1.logrecord;
+        assert_eq!(log_record.key, logrecord1.key);
+        assert_eq!(log_record.value, logrecord1.value);
+        assert_eq!(log_record.log_type, logrecord1.log_type);
+        // 再写入一个LogRecord
+        let logrecord2 = LogRecord {
+            key: "key2".as_bytes().to_vec(),
+            value: "value2".as_bytes().to_vec(),
+            log_type: NORMAL,
+        };
+        let write_size2 = datafile.write(&logrecord2.encode()).unwrap();
+        let read_logrecord2 = datafile.read_log_record(write_size as u64).unwrap();
+        let log_record = read_logrecord2.logrecord;
+        assert_eq!(log_record.key, logrecord2.key);
+        assert_eq!(log_record.value, logrecord2.value);
+        assert_eq!(log_record.log_type, logrecord2.log_type);
+        // 测试一个删除的LogRecord
+        let logrecord3 = LogRecord {
+            key: "key3".as_bytes().to_vec(),
+            value: Default::default(),
+            log_type: DELETED,
+        };
+        datafile.write(&logrecord3.encode()).unwrap();
+        let read_logrecord3 = datafile
+            .read_log_record((write_size + write_size2) as u64)
+            .unwrap();
+        let log_record = read_logrecord3.logrecord;
+        assert_eq!(log_record.key, logrecord3.key);
+        assert_eq!(log_record.value, logrecord3.value);
+        assert_eq!(log_record.log_type, logrecord3.log_type);
     }
 }

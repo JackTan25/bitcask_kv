@@ -27,7 +27,7 @@ pub struct Engine {
     max_file_id: u32,
 }
 
-const InitFileId: u32 = 0;
+const INIT_FILE_ID: u32 = 0;
 
 impl Engine {
     // 根据配置打开一个DB实例
@@ -47,22 +47,25 @@ impl Engine {
         let mut data_files = DataFile::load_data_files(options.dir_path.clone())?;
         // 切分active_files 和 old_files
         let active_file: DataFile;
+        let max_file_id = data_files.len();
         // 拿到active_file
         if data_files.len() > 0 {
             active_file = data_files.pop().unwrap();
         } else {
-            active_file = DataFile::new(options.dir_path.clone(), InitFileId).unwrap();
+            active_file = DataFile::new(options.dir_path.clone(), INIT_FILE_ID).unwrap();
         }
 
         // old files
         let mut old_files_hashmap = HashMap::new();
-        for id in 0..=data_files.len() - 2 {
-            let old_file = data_files.pop().unwrap();
-            old_files_hashmap.insert(id as u32, old_file);
+        if data_files.len() >= 1 {
+            for id in 0..=data_files.len() - 1 {
+                let old_file = data_files.pop().unwrap();
+                old_files_hashmap.insert(id as u32, old_file);
+            }
         }
         // 构建DB实例
         let engine = Engine {
-            max_file_id: data_files.len() as u32,
+            max_file_id: max_file_id as u32,
             indexer: NewIndexer(options.index_type),
             options: options,
             data_file: Arc::new(RwLock::new(active_file)),
@@ -126,6 +129,7 @@ impl Engine {
 
     // 存储的kv对采用的是Bytes
     pub fn put(&self, key: Bytes, value: Bytes) -> Result<()> {
+        // println!("put: {:?},{:?}",key,value);
         // 我们不允许key是empty的
         if key.is_empty() {
             return Err(Errors::KeyEmptyErr);
@@ -154,7 +158,7 @@ impl Engine {
         // 2. 查询索引信息获取LogRecordPos
         let log_record_pos_option = self.indexer.get(key.to_vec());
         if log_record_pos_option.is_none() {
-            return Err(Errors::KeyNotFoundInIndex);
+            return Err(Errors::KeyNotFound);
         }
         let log_record_pos = log_record_pos_option.unwrap();
         let active_file_read_guard = self.data_file.read();
@@ -170,6 +174,8 @@ impl Engine {
                 data_file.unwrap().read_log_record(log_record_pos.offset)?
             }
         };
+        // println!("logrecord_pos: id -> {:?},offset -> {:?}",log_record_pos.file_id,log_record_pos.offset);
+        // println!("get: {:?},{:?},{:?}",  Bytes::from(readlog_record.logrecord.key.clone()),Bytes::from(readlog_record.logrecord.value.clone()),readlog_record.logrecord.log_type);
         if readlog_record.logrecord.log_type == LogRecordType::DELETED {
             return Err(Errors::KeyNotFound);
         }

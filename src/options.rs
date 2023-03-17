@@ -24,8 +24,20 @@ impl Options {
         None
     }
 }
+
 #[derive(Clone, Copy)]
 pub enum IndexType {
     Btree,
     SkipList,
+}
+
+impl Default for Options {
+    fn default() -> Self {
+        Options {
+            dir_path: std::env::temp_dir(),
+            file_size_threshlod: 256 * 1024 * 1024,
+            sync: false,
+            index_type: IndexType::Btree,
+        }
+    }
 }
