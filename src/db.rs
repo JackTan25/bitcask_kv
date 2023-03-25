@@ -22,7 +22,7 @@ pub struct Engine {
     // old files
     old_files: Arc<RwLock<HashMap<u32, DataFile>>>,
     // memory Index: key -> LogRecordPos
-    indexer: Box<dyn Indexer>,
+    pub(crate) indexer: Box<dyn Indexer>,
     // max file id is just used in engine init step
     max_file_id: u32,
 }
@@ -30,8 +30,22 @@ pub struct Engine {
 const INIT_FILE_ID: u32 = 0;
 
 impl Engine {
+    // sync
+    // 防止数据丢失
+    pub fn sync(&self) -> Result<()> {
+        let write_guard = self.data_file.write();
+        write_guard.sync()
+    }
+    // close
+    // 资源清理
+    pub fn close(&self) -> Result<()> {
+        let write_guard = self.data_file.write();
+        write_guard.sync()
+    }
+
     // 根据配置打开一个DB实例
     pub fn open(options: Options) -> Result<Self> {
+        println!("文件夹:{:?}", options.dir_path);
         // 首先需要检测options的合法性
         if let Some(e) = options.check_options() {
             return Err(e);
@@ -161,6 +175,10 @@ impl Engine {
             return Err(Errors::KeyNotFound);
         }
         let log_record_pos = log_record_pos_option.unwrap();
+        self.get_value_by_pos(&log_record_pos)
+    }
+
+    pub(crate) fn get_value_by_pos(&self, log_record_pos: &LogRecordPos) -> Result<Bytes> {
         let active_file_read_guard = self.data_file.read();
         let old_files_read_guard = self.old_files.read();
         // 3. 根据LogRecordPos去查询

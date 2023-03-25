@@ -8,7 +8,6 @@ use crate::{
     util::rand_kv::{get_test_key, get_test_value},
 };
 
-
 #[test]
 fn test_engine_put() {
     let mut opts = Options::default();
@@ -162,6 +161,32 @@ fn test_engine_delete() {
     let res11 = engine.get(get_test_key(222));
     assert_eq!(Bytes::from("a new value"), res11.unwrap());
 
+    // 删除测试的文件夹
+    std::fs::remove_dir_all(opts.clone().dir_path).expect("failed to remove path");
+}
+
+#[test]
+fn test_close() {
+    let mut opts = Options::default();
+    opts.dir_path = PathBuf::from("/tmp/bitcask-rs-close");
+    opts.file_size_threshlod = 64 * 1024 * 1024;
+    let engine = Engine::open(opts.clone()).expect("failed to open engine");
+    let res = engine.close();
+    engine.put(get_test_key(111), get_test_value(111)).unwrap();
+    assert!(res.is_ok());
+    // 删除测试的文件夹
+    std::fs::remove_dir_all(opts.clone().dir_path).expect("failed to remove path");
+}
+
+#[test]
+fn test_sync() {
+    let mut opts = Options::default();
+    opts.dir_path = PathBuf::from("/tmp/bitcask-rs-sync");
+    opts.file_size_threshlod = 64 * 1024 * 1024;
+    let engine = Engine::open(opts.clone()).expect("failed to open engine");
+    let res = engine.close();
+    engine.put(get_test_key(111), get_test_value(111)).unwrap();
+    assert!(res.is_ok());
     // 删除测试的文件夹
     std::fs::remove_dir_all(opts.clone().dir_path).expect("failed to remove path");
 }

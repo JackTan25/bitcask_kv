@@ -1,5 +1,3 @@
-use std::path::PathBuf;
-
 use bitcask_kv::{db, options::*};
 use bytes::Bytes;
 fn main() {
@@ -15,6 +13,7 @@ fn main() {
     assert!(get_res.is_ok());
     println!("{:?}", get_res);
     assert_eq!(get_res.unwrap(), Bytes::from("new value"));
+
     engine.delete(Bytes::from("key1")).expect("delete failed");
     let get_res = engine.get(Bytes::from("key1"));
     assert!(get_res.is_err());
