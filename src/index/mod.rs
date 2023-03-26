@@ -3,7 +3,7 @@ use crate::errors::Result;
 use bytes::Bytes;
 // use crate::data::log_record::LogRecordPos;
 use crate::{data::log_record::LogRecordPos, options::IndexType};
-pub(crate) trait Indexer {
+pub(crate) trait Indexer :Send + Sync{
     fn put(&self, key: Vec<u8>, pos: LogRecordPos) -> bool;
     fn get(&self, key: Vec<u8>) -> Option<LogRecordPos>;
     fn delete(&self, key: Vec<u8>) -> bool;
