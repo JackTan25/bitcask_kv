@@ -19,6 +19,7 @@ pub struct LogRecordPos {
 pub enum LogRecordType {
     NORMAL = 1,
     DELETED = 2,
+    TXNCOMMITTED = 3,
 }
 
 impl LogRecordType {
@@ -26,6 +27,7 @@ impl LogRecordType {
         match record_type {
             1 => LogRecordType::NORMAL,
             2 => LogRecordType::DELETED,
+            3 => LogRecordType::TXNCOMMITTED,
             _ => panic!("unknown record type"),
         }
     }

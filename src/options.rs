@@ -41,3 +41,17 @@ impl Default for Options {
         }
     }
 }
+
+pub struct WriteBatchOptions {
+    pub batch_max_rows: u32,
+    pub sync_writes: bool,
+}
+
+impl Default for WriteBatchOptions {
+    fn default() -> Self {
+        Self {
+            batch_max_rows: 10000,
+            sync_writes: true,
+        }
+    }
+}

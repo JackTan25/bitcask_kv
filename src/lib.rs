@@ -10,3 +10,4 @@ mod util;
 pub mod db;
 pub mod iterator;
 pub mod options;
+pub mod write_batch;

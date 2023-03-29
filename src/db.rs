@@ -1,10 +1,12 @@
 use std::collections::HashMap;
 use std::fs;
+use std::sync::atomic::AtomicUsize;
 use std::sync::Arc;
 
-use bytes::Bytes;
+use bytes::{Bytes, BytesMut};
 use log::error;
-use parking_lot::RwLock;
+use parking_lot::{Mutex, RwLock};
+use prost::decode_length_delimiter;
 
 use crate::data::log_record::{LogRecordType, ReadLogRecord};
 use crate::data::{
@@ -14,7 +16,10 @@ use crate::data::{
 use crate::errors::{Errors, Result};
 use crate::index::{Indexer, NewIndexer};
 use crate::options::Options;
-use crate::{data, options};
+use crate::write_batch::{WriteBatch, TXN_FIN};
+
+const NO_TXN_SEQ_NO: usize = 0;
+
 pub struct Engine {
     options: Options,
     // active file
@@ -25,6 +30,10 @@ pub struct Engine {
     pub(crate) indexer: Box<dyn Indexer>,
     // max file id is just used in engine init step
     max_file_id: u32,
+
+    pub(crate) batch_commit_lock: Arc<Mutex<()>>,
+
+    pub(crate) seq_no: Arc<AtomicUsize>,
 }
 
 const INIT_FILE_ID: u32 = 0;
@@ -84,6 +93,8 @@ impl Engine {
             options: options,
             data_file: Arc::new(RwLock::new(active_file)),
             old_files: Arc::new(RwLock::new(old_files_hashmap)),
+            batch_commit_lock: Arc::new(Mutex::new(())),
+            seq_no: Arc::new(AtomicUsize::new(0)),
         };
 
         // 加载索引
@@ -93,12 +104,22 @@ impl Engine {
         }
     }
 
+    fn parse_key(&self, key: Vec<u8>) -> (Vec<u8>, usize) {
+        let mut buf = BytesMut::new();
+        buf.extend_from_slice(&key);
+        let seq_no = decode_length_delimiter(&mut buf).unwrap();
+        return (buf.to_vec(), seq_no);
+    }
+
     fn load_index_from_datafiles(&self) -> Result<()> {
         // 没有文件存在，不需要加载索引
         if self.max_file_id == 0 {
             return Ok(());
         }
         let read_guard = self.old_files.read();
+        // 暂存批量提交的log_record
+        let mut logrecords = Vec::new();
+        let mut current_seq_no = NO_TXN_SEQ_NO;
         for id in 0..=self.max_file_id - 1 {
             let mut file: Option<&DataFile> = None;
             // 1.拿到读锁
@@ -113,7 +134,7 @@ impl Engine {
                 } else {
                     logrecord_res = file.unwrap().read_log_record(offset);
                 }
-                let (logrecord, size) = match logrecord_res {
+                let (mut logrecord, size) = match logrecord_res {
                     Ok(res) => (res.logrecord, res.size),
                     Err(e) => {
                         if e == Errors::DataFileReadEOF {
@@ -122,23 +143,60 @@ impl Engine {
                         return Err(e);
                     }
                 };
-                // 读取到logrecord 后就可以构建索引了
-                if logrecord.log_type == LogRecordType::NORMAL {
-                    self.indexer.put(
-                        logrecord.key.to_vec(),
+
+                let (new_key, seq_no) = self.parse_key(logrecord.key);
+                logrecord.key = new_key;
+                if seq_no == NO_TXN_SEQ_NO {
+                    // 接下来需要对key进行解析
+                    // 读取到logrecord 后就可以构建索引了
+                    self.update_indexer(
+                        logrecord,
                         LogRecordPos {
                             file_id: id,
                             offset: offset,
                         },
                     );
                 } else {
-                    self.indexer.delete(logrecord.key.to_vec());
+                    // 如果是批量原子提交的情况，则需要进行缓存
+                    if current_seq_no == NO_TXN_SEQ_NO {
+                        current_seq_no = seq_no;
+                    }
+
+                    if current_seq_no != seq_no {
+                        // 老的原子提交失败了
+                        logrecords.clear()
+                    }
+                    // 当前事务已经到了最后一个了
+                    // 开始加载索引
+                    if logrecord.key.eq(TXN_FIN) {
+                        while logrecords.len() > 0 {
+                            let (log_record, logrecord_pos) = logrecords.pop().unwrap();
+                            self.update_indexer(log_record, logrecord_pos)
+                        }
+                        current_seq_no = NO_TXN_SEQ_NO;
+                    } else {
+                        logrecords.push((
+                            logrecord,
+                            LogRecordPos {
+                                file_id: id,
+                                offset: offset,
+                            },
+                        ));
+                    }
                 }
                 // 更新offset
                 offset += size as u64;
             }
         }
         Ok(())
+    }
+
+    fn update_indexer(&self, logrecord: LogRecord, pos: LogRecordPos) {
+        if logrecord.log_type == LogRecordType::NORMAL {
+            self.indexer.put(logrecord.key.to_vec(), pos);
+        } else {
+            self.indexer.delete(logrecord.key.to_vec());
+        }
     }
 
     // 存储的kv对采用的是Bytes
@@ -149,7 +207,7 @@ impl Engine {
             return Err(Errors::KeyEmptyErr);
         }
         let mut log_recored = LogRecord {
-            key: key.to_vec(),
+            key: WriteBatch::encode_key_seqno(key.clone(), NO_TXN_SEQ_NO),
             value: value.to_vec(),
             log_type: crate::data::log_record::LogRecordType::NORMAL,
         };
@@ -211,7 +269,7 @@ impl Engine {
             return Ok(());
         }
         let mut log_record = LogRecord {
-            key: key.to_vec(),
+            key: WriteBatch::encode_key_seqno(key.clone(), NO_TXN_SEQ_NO),
             value: Default::default(),
             log_type: LogRecordType::DELETED,
         };

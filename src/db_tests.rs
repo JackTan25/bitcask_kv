@@ -1,5 +1,8 @@
 use bytes::Bytes;
-use std::{path::PathBuf, sync::{Barrier, Arc}};
+use std::{
+    path::PathBuf,
+    sync::{Arc, Barrier},
+};
 
 use crate::{
     db::Engine,
@@ -192,29 +195,34 @@ fn test_sync() {
 }
 
 #[test]
-fn test_concurrent_put_get(){
+fn test_concurrent_put_get() {
     let mut opts = Options::default();
     opts.dir_path = PathBuf::from("/tmp/test_concurrent_get");
     opts.file_size_threshlod = 64 * 1024 * 1024;
     let engine = Arc::new(Engine::open(opts.clone()).expect("failed to open engine"));
     let barriers = Arc::new(Barrier::new(10001));
     let mut handles = Vec::new();
-    for i in 0..10000{
-        let engine2 = Arc::clone(&engine); 
+    for i in 0..10000 {
+        let engine2 = Arc::clone(&engine);
         let barrier = Arc::clone(&barriers);
-        let handle = std::thread::spawn(move ||{
-            engine2.put(Bytes::from(format!("key{}",i)), Bytes::from(format!("value{}",i))).unwrap();
+        let handle = std::thread::spawn(move || {
+            engine2
+                .put(
+                    Bytes::from(format!("key{}", i)),
+                    Bytes::from(format!("value{}", i)),
+                )
+                .unwrap();
             barrier.wait()
         });
         handles.push(handle);
     }
     barriers.wait();
-    for handle in handles{
+    for handle in handles {
         handle.join().unwrap();
     }
     for i in 0..10000 {
-        let values = engine.get(Bytes::from(format!("key{}",i))).unwrap();
-        assert_eq!(values,Bytes::from(format!("value{}",i)));
+        let values = engine.get(Bytes::from(format!("key{}", i))).unwrap();
+        assert_eq!(values, Bytes::from(format!("value{}", i)));
     }
     // 关闭后重新打开
     engine.close().unwrap();
@@ -226,8 +234,8 @@ fn test_concurrent_put_get(){
             for i in 0..100 {
                 let key_id = (i + thread_id) % 100;
                 for _ in 0..100 {
-                    let values = engine.get(Bytes::from(format!("key{}",key_id))).unwrap();
-                    assert_eq!(values,Bytes::from(format!("value{}",key_id)));
+                    let values = engine.get(Bytes::from(format!("key{}", key_id))).unwrap();
+                    assert_eq!(values, Bytes::from(format!("value{}", key_id)));
                 }
             }
         });

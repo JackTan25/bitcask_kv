@@ -37,6 +37,8 @@ pub enum Errors {
     DataFileReadEOF,
     #[error("CheckSum Failed, the LogRecord maybe broken")]
     CheckSumFailed,
+    #[error("Over MaxBatchRows")]
+    ExceedBatchMaxRows,
 }
 
 pub type Result<T> = std::result::Result<T, Errors>;
