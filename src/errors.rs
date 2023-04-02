@@ -39,6 +39,8 @@ pub enum Errors {
     CheckSumFailed,
     #[error("Over MaxBatchRows")]
     ExceedBatchMaxRows,
+    #[error("Merge is doing now")]
+    MergeInProcess,
 }
 
 pub type Result<T> = std::result::Result<T, Errors>;

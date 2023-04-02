@@ -9,5 +9,6 @@ mod util;
 // 对外使用接口
 pub mod db;
 pub mod iterator;
+pub mod merge;
 pub mod options;
 pub mod write_batch;

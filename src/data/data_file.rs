@@ -22,14 +22,35 @@ pub struct DataFile {
 }
 
 pub const DATA_FILE_NAME_SUFFIX: &str = ".data";
-
+pub const HIT_FILE_NAME: &str = "hint-index";
+pub const MERGE_FINISHED_FILE_NAME: &str = "merge-finished";
 impl DataFile {
+    pub fn new_hint_file(dir_path: PathBuf) -> Result<DataFile> {
+        let file_name = dir_path.join(HIT_FILE_NAME);
+        let io_manager = new_io_manager(&file_name)?;
+        Ok(DataFile {
+            file_id: 0,
+            write_offset: RwLock::new(0),
+            fio: Box::new(io_manager),
+        })
+    }
+
+    pub fn new_finished_file(dir_path: PathBuf) -> Result<DataFile> {
+        let file_name = dir_path.join(MERGE_FINISHED_FILE_NAME);
+        let io_manager = new_io_manager(&file_name)?;
+        Ok(DataFile {
+            file_id: 0,
+            write_offset: RwLock::new(0),
+            fio: Box::new(io_manager),
+        })
+    }
+
     fn set_write_offset(&self, size: u64) {
         let mut write_guard = self.write_offset.write();
         *write_guard += size as u64;
     }
 
-    fn get_file_name(dirpath: PathBuf, file_id: u32) -> PathBuf {
+    pub fn get_file_name(dirpath: PathBuf, file_id: u32) -> PathBuf {
         let file_id_str = std::format!("{:09}", file_id) + DATA_FILE_NAME_SUFFIX;
         dirpath.join(file_id_str)
     }
@@ -141,6 +162,16 @@ impl DataFile {
             datafiles.push(datafile);
         }
         return Ok(datafiles);
+    }
+
+    pub fn write_hint_file_record(&self, key: Vec<u8>, pos: LogRecordPos) -> Result<()> {
+        let log_record = LogRecord {
+            key: key,
+            value: pos.encode(),
+            log_type: LogRecordType::NORMAL,
+        };
+        self.write(&log_record.encode())?;
+        Ok(())
     }
 }
 

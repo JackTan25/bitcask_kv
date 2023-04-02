@@ -1,5 +1,11 @@
+use std::os::unix::raw::off_t;
+
 use bytes::{BufMut, BytesMut};
-use prost::{encode_length_delimiter, length_delimiter_len};
+use prost::{
+    encode_length_delimiter,
+    encoding::{decode_varint, encode_varint},
+    length_delimiter_len,
+};
 
 // 实现了Copy trait的对象一定实现了Clone
 // 实现Clone的没有实现Copy的只能在堆上
@@ -20,6 +26,31 @@ pub enum LogRecordType {
     NORMAL = 1,
     DELETED = 2,
     TXNCOMMITTED = 3,
+}
+
+impl LogRecordPos {
+    pub fn encode(&self) -> Vec<u8> {
+        let mut buf = BytesMut::new();
+        encode_varint(self.file_id as u64, &mut buf);
+        encode_varint(self.offset, &mut buf);
+        buf.to_vec()
+    }
+    pub fn decode(pos: Vec<u8>) -> LogRecordPos {
+        let mut buf = BytesMut::new();
+        buf.put_slice(&pos);
+        let fid = match decode_varint(&mut buf) {
+            Ok(_fid) => _fid,
+            Err(e) => panic!("decode logrecord_pos error:{}", e),
+        };
+        let offset = match decode_varint(&mut buf) {
+            Ok(_offset) => _offset,
+            Err(e) => panic!("decode logrecord_pos error:{}", e),
+        };
+        LogRecordPos {
+            file_id: fid as u32,
+            offset: offset,
+        }
+    }
 }
 
 impl LogRecordType {

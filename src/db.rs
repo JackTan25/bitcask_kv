@@ -8,6 +8,7 @@ use log::error;
 use parking_lot::{Mutex, RwLock};
 use prost::decode_length_delimiter;
 
+use crate::data::data_file::MERGE_FINISHED_FILE_NAME;
 use crate::data::log_record::{LogRecordType, ReadLogRecord};
 use crate::data::{
     data_file::DataFile,
@@ -18,22 +19,24 @@ use crate::index::{Indexer, NewIndexer};
 use crate::options::Options;
 use crate::write_batch::{WriteBatch, TXN_FIN};
 
-const NO_TXN_SEQ_NO: usize = 0;
+pub const NO_TXN_SEQ_NO: usize = 0;
 
 pub struct Engine {
-    options: Options,
+    pub(crate) options: Options,
     // active file
-    data_file: Arc<RwLock<DataFile>>,
+    pub(crate) data_file: Arc<RwLock<DataFile>>,
     // old files
-    old_files: Arc<RwLock<HashMap<u32, DataFile>>>,
+    pub(crate) old_files: Arc<RwLock<HashMap<u32, DataFile>>>,
     // memory Index: key -> LogRecordPos
     pub(crate) indexer: Box<dyn Indexer>,
     // max file id is just used in engine init step
-    max_file_id: u32,
+    pub(crate) max_file_id: u32,
 
     pub(crate) batch_commit_lock: Arc<Mutex<()>>,
 
     pub(crate) seq_no: Arc<AtomicUsize>,
+
+    pub(crate) merge_lock: Mutex<()>,
 }
 
 const INIT_FILE_ID: u32 = 0;
@@ -66,11 +69,16 @@ impl Engine {
             error!("create database dirpath failed: {}", e);
             return Err(Errors::DirPathCreateFailed);
         }
+        // 加载merge files(将merge的文件给移动过来)
+        Engine::load_merge_files(options.dir_path.clone()).unwrap();
         // 开始加载文件
         let mut data_files = DataFile::load_data_files(options.dir_path.clone())?;
         // 切分active_files 和 old_files
         let active_file: DataFile;
-        let max_file_id = data_files.len();
+        let mut max_file_id = 0;
+        if data_files.len() > 0 {
+            max_file_id = data_files.last().unwrap().get_file_id() + 1;
+        }
         // 拿到active_file
         if data_files.len() > 0 {
             active_file = data_files.pop().unwrap();
@@ -95,8 +103,9 @@ impl Engine {
             old_files: Arc::new(RwLock::new(old_files_hashmap)),
             batch_commit_lock: Arc::new(Mutex::new(())),
             seq_no: Arc::new(AtomicUsize::new(0)),
+            merge_lock: Mutex::new(()),
         };
-
+        engine.load_index_from_datafiles().unwrap();
         // 加载索引
         match engine.load_index_from_datafiles() {
             Ok(_) => return Ok(engine),
@@ -104,7 +113,7 @@ impl Engine {
         }
     }
 
-    fn parse_key(&self, key: Vec<u8>) -> (Vec<u8>, usize) {
+    pub(crate) fn parse_key(&self, key: Vec<u8>) -> (Vec<u8>, usize) {
         let mut buf = BytesMut::new();
         buf.extend_from_slice(&key);
         let seq_no = decode_length_delimiter(&mut buf).unwrap();
@@ -116,6 +125,18 @@ impl Engine {
         if self.max_file_id == 0 {
             return Ok(());
         }
+        let mut no_merged_file_id = 0;
+        let mut merge_finished = false;
+        let merge_finished_file;
+        let merge_finish_path = self.options.dir_path.join(MERGE_FINISHED_FILE_NAME);
+        if merge_finish_path.is_file() {
+            merge_finished = true;
+            merge_finished_file = DataFile::new_finished_file(merge_finish_path)?;
+            let read_logrecord = merge_finished_file.read_log_record(0)?;
+            let v = String::from_utf8(read_logrecord.logrecord.value).unwrap();
+            no_merged_file_id = v.parse::<u32>().unwrap();
+        }
+
         let read_guard = self.old_files.read();
         // 暂存批量提交的log_record
         let mut logrecords = Vec::new();
@@ -124,7 +145,14 @@ impl Engine {
             let mut file: Option<&DataFile> = None;
             // 1.拿到读锁
             if id != self.max_file_id - 1 {
+                // old files
                 file = Some(read_guard.get(&id).unwrap());
+                // 对于old file如果是已经被merge过的不要再load index了
+                if merge_finished {
+                    if file.unwrap().get_file_id() < no_merged_file_id {
+                        continue;
+                    }
+                }
             }
             let mut offset = 0;
             loop {
